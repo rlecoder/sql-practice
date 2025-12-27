@@ -1,0 +1,60 @@
+WITH latest_date AS (
+    SELECT
+        customer_id,
+        MAX(order_date) AS most_recent_order_date
+    FROM orders
+    GROUP BY customer_id
+),
+latest_order_id AS (
+    SELECT
+        o.customer_id,
+        MAX(o.order_id) AS most_recent_order_id
+    FROM orders o
+    JOIN latest_date ld
+      ON o.customer_id = ld.customer_id
+     AND o.order_date = ld.most_recent_order_date
+    GROUP BY o.customer_id
+),
+latest_order AS (
+    SELECT
+        o.customer_id,
+        o.order_date AS most_recent_order_date,
+        o.order_total AS most_recent_order_total
+    FROM orders o
+    JOIN latest_order_id loi
+      ON o.customer_id = loi.customer_id
+     AND o.order_id = loi.most_recent_order_id
+),
+order_counts AS (
+    SELECT
+        customer_id,
+        COUNT(*) AS order_count
+    FROM orders
+    GROUP BY customer_id
+),
+prev_30d_avg AS (
+    SELECT
+        o.customer_id,
+        AVG(o.order_total) AS avg_previous_30d
+    FROM orders o
+    JOIN latest_order lo
+      ON o.customer_id = lo.customer_id
+    WHERE o.order_date < lo.most_recent_order_date
+      AND o.order_date >= lo.most_recent_order_date - INTERVAL '30 days'
+    GROUP BY o.customer_id
+)
+SELECT
+    c.customer_id,
+    c.name,
+    lo.most_recent_order_total,
+    p.avg_previous_30d,
+    oc.order_count
+FROM customers c
+JOIN latest_order lo
+  ON c.customer_id = lo.customer_id
+JOIN order_counts oc
+  ON c.customer_id = oc.customer_id
+JOIN prev_30d_avg p
+  ON c.customer_id = p.customer_id
+WHERE oc.order_count >= 5
+  AND lo.most_recent_order_total > 1.5 * p.avg_previous_30d;
